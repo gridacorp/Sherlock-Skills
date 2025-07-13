@@ -2,35 +2,26 @@
 setlocal enabledelayedexpansion
 
 :: =====================================================
-:: AUTODESK WIPE TOTAL (CERO RASTROS) - SIN PAUSAS
+:: AUTODESK WIPE TOTAL - SIN PAUSAS, SIN ERRORES DETENIENDO
 :: =====================================================
-:: ADVERTENCIA: NO HAY VUELTA ATRÁS. EJECUTAR COMO ADMINISTRADOR.
 
-:: Subrutina para verificar errores (sólo log, no pausa)
-:CheckError
-if ERRORLEVEL 1 (
-    echo [ERROR] Código de error %ERRORLEVEL% en: %~1 >> "%LOG_DIR%\wipe_log.txt"
-)
-goto :eof
-
-:: ============ LOG ============
+:: Crear carpeta de logs
 set "LOG_DIR=%SystemDrive%\Autodesk_Wipe_Logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 echo Iniciado: %DATE% %TIME% > "%LOG_DIR%\wipe_log.txt"
 
-:: ============ 1. DESINSTALAR PRODUCTOS CON WMIC ============
-echo [1] Desinstalando MSI... >> "%LOG_DIR%\wipe_log.txt"
+:: [1] Desinstalar productos con WMIC
+echo [1] Desinstalando productos Autodesk... >> "%LOG_DIR%\wipe_log.txt"
 for /f "skip=1 tokens=2 delims={}" %%I in (
     'wmic product where "Name like '%%Autodesk%%' or Name like '%%AutoCAD%%'" get IdentifyingNumber ^| find "{"'
 ) do (
     set "GUID={%%I}"
     echo Desinstalando: !GUID! >> "%LOG_DIR%\wipe_log.txt"
     msiexec /x "!GUID!" /qn /norestart >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "msiexec /x !GUID!"
 )
 
-:: ============ 2. MATAR PROCESOS ============
-echo [2] Matando procesos... >> "%LOG_DIR%\wipe_log.txt"
+:: [2] Matar procesos relacionados
+echo [2] Cerrando procesos... >> "%LOG_DIR%\wipe_log.txt"
 for %%P in (
     acad.exe
     AdAppMgrSvc.exe
@@ -39,11 +30,10 @@ for %%P in (
     FlexNetLicensingService.exe
 ) do (
     taskkill /f /im %%P >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "taskkill %%P"
 )
 
-:: ============ 3. ELIMINAR SERVICIOS ============
-echo [3] Deteniendo y eliminando servicios... >> "%LOG_DIR%\wipe_log.txt"
+:: [3] Eliminar servicios
+echo [3] Eliminando servicios... >> "%LOG_DIR%\wipe_log.txt"
 for %%S in (
     AdAppMgrSvc
     AutodeskDesktopApp
@@ -52,23 +42,19 @@ for %%S in (
     AdskLicensingService
 ) do (
     sc stop %%~S >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "sc stop %%S"
     sc delete %%~S >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "sc delete %%S"
 )
 
-:: ============ 4. BORRAR TAREAS PROGRAMADAS ============
-echo [4] Borrando tareas programadas... >> "%LOG_DIR%\wipe_log.txt"
+:: [4] Borrar tareas programadas
+echo [4] Eliminando tareas programadas... >> "%LOG_DIR%\wipe_log.txt"
 schtasks /query /fo LIST | findstr /i "Autodesk" > "%TEMP%\autsched.txt"
-call :CheckError "schtasks /query"
 for /f "tokens=2 delims: " %%T in ('findstr /i "TaskName" "%TEMP%\autsched.txt"') do (
     schtasks /delete /tn "%%T" /f >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "schtasks /delete %%T"
 )
 del "%TEMP%\autsched.txt"
 
-:: ============ 5. ELIMINAR CARPETAS ============
-echo [5] Borrando carpetas residuales... >> "%LOG_DIR%\wipe_log.txt"
+:: [5] Eliminar carpetas
+echo [5] Eliminando carpetas residuales... >> "%LOG_DIR%\wipe_log.txt"
 for %%D in (
     "C:\Program Files\Autodesk"
     "C:\Program Files (x86)\Autodesk"
@@ -81,29 +67,24 @@ for %%D in (
     "C:\ProgramData\FLEXnet"
 ) do (
     if exist %%~D (
-        echo Eliminando %%~D >> "%LOG_DIR%\wipe_log.txt"
+        echo Eliminando: %%~D >> "%LOG_DIR%\wipe_log.txt"
         rd /s /q "%%~D" >> "%LOG_DIR%\wipe_log.txt" 2>&1
-        call :CheckError "rd /s /q %%D"
     )
 )
 
-:: ============ 6. BORRAR TEMPORALES ============
-echo [6] Limpiando temporales... >> "%LOG_DIR%\wipe_log.txt"
+:: [6] Eliminar archivos temporales
+echo [6] Eliminando archivos temporales... >> "%LOG_DIR%\wipe_log.txt"
 del /f /s /q "%TEMP%\*" >> "%LOG_DIR%\wipe_log.txt" 2>&1
-call :CheckError "del %TEMP%"
 for /d %%T in ("%TEMP%\*") do (
     rd /s /q "%%T" >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "rd %TEMP%\\*"
 )
 del /f /s /q "%SystemRoot%\Temp\*" >> "%LOG_DIR%\wipe_log.txt" 2>&1
-call :CheckError "del %SystemRoot%\\Temp"
 for /d %%T in ("%SystemRoot%\Temp\*") do (
     rd /s /q "%%T" >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "rd %SystemRoot%\\Temp\\*"
 )
 
-:: ============ 7. LIMPIAR REGISTRO ============
-echo [7] Limpiando registro... >> "%LOG_DIR%\wipe_log.txt"
+:: [7] Eliminar entradas de registro
+echo [7] Eliminando entradas de registro... >> "%LOG_DIR%\wipe_log.txt"
 for %%R in (
     HKCU\Software\Autodesk
     HKCU\Software\Autodesk\AutoCAD
@@ -113,23 +94,18 @@ for %%R in (
     HKCU\Software\FLEXnet Publisher
 ) do (
     reg delete "%%R" /f >> "%LOG_DIR%\wipe_log.txt" 2>&1
-    call :CheckError "reg delete %%R"
 )
 
-:: ============ 8. VARIABLES DE ENTORNO ============
-echo [8] Limpiando variables de entorno... >> "%LOG_DIR%\wipe_log.txt"
+:: [8] Limpiar variables de entorno
+echo [8] Eliminando variables de entorno... >> "%LOG_DIR%\wipe_log.txt"
 setx PATH "%PATH:;C:\Program Files\Autodesk;=%" >> "%LOG_DIR%\wipe_log.txt" 2>&1
-call :CheckError "setx PATH"
 reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v AUTODESK_ROOT /f >> "%LOG_DIR%\wipe_log.txt" 2>&1
-call :CheckError "reg delete AUTODESK_ROOT"
 
-:: ============ 9. FINAL ============
+:: [9] Final
 echo. >> "%LOG_DIR%\wipe_log.txt"
 echo ===================================================== >> "%LOG_DIR%\wipe_log.txt"
-echo WIPE COMPLETO: %DATE% %TIME% >> "%LOG_DIR%\wipe_log.txt"
+echo Proceso finalizado: %DATE% %TIME% >> "%LOG_DIR%\wipe_log.txt"
 echo ===================================================== >> "%LOG_DIR%\wipe_log.txt"
-
-echo Proceso completado. Revisa el log en %LOG_DIR%\wipe_log.txt
 
 endlocal
 exit
