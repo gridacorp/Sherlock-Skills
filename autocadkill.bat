@@ -1,97 +1,68 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ============================
-:: AUTODESK TOTAL WIPE SCRIPT
-:: ============================
-:: Ejecutar como Administrador
 echo =====================================================
-echo     ELIMINADOR COMPLETO DE AUTODESK (100% RASTROS)
+echo    AUTODESK WIPE TOTAL (CERO RASTROS) - SIN ERRORES
 echo =====================================================
-echo Este script eliminará TODO lo relacionado con Autodesk.
-echo.
-echo 🔴 ADVERTENCIA: Esta acción NO SE PUEDE DESHACER.
+echo ADVERTENCIA: NO HAY VUELTA ATRÁS. EJECUTAR COMO ADMINISTRADOR.
 echo.
 
-:: ============ CREAR LOG ============
+:: ============ LOG ============
 set "LOG_DIR=%SystemDrive%\Autodesk_Wipe_Logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 echo Iniciado: %DATE% %TIME% > "%LOG_DIR%\wipe_log.txt"
 
-:: ============ 1. DETENER PROCESOS ============
-echo [1] Deteniendo procesos...
-for %%P in (
-  acad.exe
-  AdAppMgrSvc.exe
-  AdskLicensingAgent.exe
-  AdskIdentityManager.exe
-  AutodeskDesktopApp.exe
-  FlexNetLicensingService.exe
-) do (
-  taskkill /f /im %%P >nul 2>&1
+:: ============ 1. DESINSTALAR MSI CON WMIC ============
+echo [1] Desinstalando con WMIC...
+for /f "skip=1 tokens=2 delims={}" %%I in ('
+    wmic product where "Name like '%%Autodesk%%' or Name like '%%AutoCAD%%'" get IdentifyingNumber ^| find "{" 
+') do (
+    set "GUID={%%I}"
+    echo Desinstalando producto MSI: !GUID! >> "%LOG_DIR%\wipe_log.txt"
+    msiexec /x "!GUID!" /qn /norestart >> "%LOG_DIR%\wipe_log.txt" 2>&1
 )
 
-:: ============ 2. DESINSTALAR TODOS LOS PRODUCTOS ============
-echo [2] Desinstalando productos Autodesk...
-for %%K in (
-  "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
-  "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-) do (
-  for /f "tokens=*" %%G in ('reg query %%K /s /f "Autodesk" /k 2^>nul') do (
-    for /f "tokens=3,*" %%A in ('reg query "%%G" /v "UninstallString" 2^>nul') do (
-      set "UNINSTALL=%%A %%B"
-      set "UNINSTALL=!UNINSTALL:"=!"
-      echo Desinstalando: !UNINSTALL! >> "%LOG_DIR%\wipe_log.txt"
-      echo Ejecutando: !UNINSTALL!
-      echo.
-      echo !UNINSTALL! | find /i "msiexec" >nul && (
-        call !UNINSTALL! /qn /norestart >> "%LOG_DIR%\wipe_log.txt" 2>&1
-      ) || (
-        call !UNINSTALL! /quiet /norestart >> "%LOG_DIR%\wipe_log.txt" 2>&1
-      )
-    )
-  )
+:: ============ 2. DETENER PROCESOS ============
+echo [2] Matando procesos en memoria...
+for %%P in (acad.exe AdAppMgrSvc.exe AdskLicensingAgent.exe AutodeskDesktopApp.exe FlexNetLicensingService.exe) do (
+    taskkill /f /im %%P >nul 2>&1
 )
 
 :: ============ 3. ELIMINAR SERVICIOS ============
-echo [3] Eliminando servicios Autodesk...
-for %%S in (
-  AdAppMgrSvc
-  AutodeskDesktopApp
-  FlexNet Licensing Service
-  Autodesk Genuine Service
-  AdskLicensingService
-) do (
-  sc stop "%%S" >nul 2>&1
-  sc delete "%%S" >nul 2>&1
+echo [3] Eliminando servicios...
+for %%S in ("AdAppMgrSvc" "AutodeskDesktopApp" "FlexNet Licensing Service" "Autodesk Genuine Service" "AdskLicensingService") do (
+    sc stop %%~S >nul 2>&1
+    sc delete %%~S >nul 2>&1
+    echo Servicio %%~S >> "%LOG_DIR%\wipe_log.txt"
 )
 
-:: ============ 4. ELIMINAR TAREAS PROGRAMADAS ============
-echo [4] Eliminando tareas programadas...
-for /f "tokens=*" %%T in ('schtasks /query /fo LIST ^| findstr /i Autodesk') do (
-  for /f "tokens=2 delims=:" %%U in ("%%T") do (
-    schtasks /delete /tn "%%U" /f >nul 2>&1
-  )
+:: ============ 4. BORRAR TAREAS PROGRAMADAS ============
+echo [4] Borrando tareas programadas...
+schtasks /query /fo LIST ^| findstr /i "Autodesk" > "%TEMP%\autsched.txt"
+for /f "tokens=2 delims: " %%T in ('type "%TEMP%\autsched.txt" ^| findstr /i "TaskName"') do (
+    schtasks /delete /tn "%%T" /f >nul 2>&1
+    echo Tarea %%T >> "%LOG_DIR%\wipe_log.txt"
 )
+del "%TEMP%\autsched.txt"
 
 :: ============ 5. ELIMINAR CARPETAS ============
-echo [5] Eliminando carpetas...
+echo [5] Borrando carpetas residuales...
 set FOLDERS=(
-  "C:\Program Files\Autodesk"
-  "C:\Program Files (x86)\Autodesk"
-  "C:\ProgramData\Autodesk"
-  "C:\Autodesk"
-  "%APPDATA%\Autodesk"
-  "%LOCALAPPDATA%\Autodesk"
-  "%USERPROFILE%\Documents\Autodesk"
-  "%USERPROFILE%\Documents\AutoCAD"
-  "C:\ProgramData\FLEXnet"
-  "%APPDATA%\FLEXnet"
-  "%ProgramData%\Autodesk\AdskLicensingService"
+    "C:\Program Files\Autodesk"
+    "C:\Program Files (x86)\Autodesk"
+    "C:\ProgramData\Autodesk"
+    "C:\Autodesk"
+    "%APPDATA%\Autodesk"
+    "%LOCALAPPDATA%\Autodesk"
+    "%USERPROFILE%\Documents\Autodesk"
+    "%USERPROFILE%\Documents\AutoCAD"
+    "C:\ProgramData\FLEXnet"
 )
-
-for %%F in %FOLDERS% do (
-  rmdir /s /q %%~F >nul 2>&1
+for %%D in %FOLDERS% do (
+    if exist %%~D (
+        rmdir /s /q "%%~D"
+        echo Eliminado: %%~D >> "%LOG_DIR%\wipe_log.txt"
+    )
 )
 
 :: ============ 6. BORRAR TEMPORALES ============
@@ -101,18 +72,18 @@ for /d %%T in ("%TEMP%\*") do rmdir /s /q "%%T"
 del /f /s /q "%SystemRoot%\Temp\*" >nul 2>&1
 for /d %%T in ("%SystemRoot%\Temp\*") do rmdir /s /q "%%T"
 
-:: ============ 7. ELIMINAR REGISTRO ============
-echo [7] Borrando claves de registro...
-
+:: ============ 7. LIMPIAR REGISTRO ============
+echo [7] Limpiando registro...
 for %%R in (
-  "HKCU\Software\Autodesk"
-  "HKLM\SOFTWARE\Autodesk"
-  "HKLM\SOFTWARE\WOW6432Node\Autodesk"
-  "HKCU\Software\FLEXnet Publisher"
-  "HKLM\SOFTWARE\FLEXnet Publisher"
-  "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    "HKCU\Software\Autodesk"
+    "HKCU\Software\Autodesk\AutoCAD"
+    "HKLM\SOFTWARE\Autodesk"
+    "HKLM\SOFTWARE\WOW6432Node\Autodesk"
+    "HKLM\SOFTWARE\FLEXnet Publisher"
+    "HKCU\Software\FLEXnet Publisher"
 ) do (
-  reg delete "%%R" /f >nul 2>&1
+    reg delete %%~R /f >nul 2>&1
+    echo Clave borrada: %%~R >> "%LOG_DIR%\wipe_log.txt"
 )
 
 :: ============ 8. VARIABLES DE ENTORNO ============
@@ -120,16 +91,13 @@ echo [8] Limpiando variables de entorno...
 setx PATH "%PATH:;C:\Program Files\Autodesk;%=" >nul 2>&1
 reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v AUTODESK_ROOT /f >nul 2>&1
 
-:: ============ 9. LIMPIAR LOGS ============
-echo [9] Limpiando eventos...
-for /f "tokens=*" %%E in ('wevtutil el ^| findstr /i "Autodesk"') do (
-  wevtutil cl "%%E" >nul 2>&1
-)
+:: ============ 9. FINAL ============
+echo. >> "%LOG_DIR%\wipe_log.txt"
+echo ===================================================== >> "%LOG_DIR%\wipe_log.txt"
+echo WIPE COMPLETO: %DATE% %TIME% >> "%LOG_DIR%\wipe_log.txt"
+echo ===================================================== >> "%LOG_DIR%\wipe_log.txt"
 
-:: ============ 10. FINAL ============
 echo.
-echo ✅ Autodesk ha sido completamente eliminado del sistema.
-echo 📄 Revisa el log en: %LOG_DIR%\wipe_log.txt
-echo.
+echo ✅ Proceso completado. Revisa el log en %LOG_DIR%\wipe_log.txt
 pause
 exit
