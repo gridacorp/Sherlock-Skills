@@ -2,39 +2,62 @@
 setlocal enabledelayedexpansion
 
 :: =====================================================
-:: AUTODESK WIPE TOTAL (CERO RASTROS) - DETECCIÓN DE ERRORES
+:: AUTODESK WIPE TOTAL (CERO RASTROS) - INTERACTIVO
 :: =====================================================
 :: ADVERTENCIA: NO HAY VUELTA ATRÁS. EJECUTAR COMO ADMINISTRADOR.
 
-:: Función para verificar errores y pausar
+echo =====================================================
+echo    ELIMINADOR COMPLETO DE AUTODESK (CERO RASTROS)
+echo =====================================================
+echo Este script eliminará TODO lo relacionado con Autodesk.
+echo.
+echo Presiona una tecla para iniciar o Ctrl+C para cancelar.
+pause >nul
+
+goto :ScriptStart
+
+:: =====================================
+:: Subrutina para verificar errores
+:: =====================================
 :CheckError
 if ERRORLEVEL 1 (
     echo.
     echo [ERROR] El comando anterior falló con código de error %ERRORLEVEL%.
-    echo Por favor revisa el log antes de continuar.
-    pause
+    echo El script se pausará para que puedas revisar.
+    pause >nul
 )
-exit /b 0
+goto :eof
 
-:: ============ LOG ============
+:: =====================================
+:: Inicio del script
+:: =====================================
+:ScriptStart
+
+:: ============  LOG  ============
 set "LOG_DIR=%SystemDrive%\Autodesk_Wipe_Logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 echo Iniciado: %DATE% %TIME% > "%LOG_DIR%\wipe_log.txt"
 
 :: ============ 1. DESINSTALAR MSI CON WMIC ============
-echo [1] Desinstalando con WMIC... >> "%LOG_DIR%\wipe_log.txt"
+echo [1] Desinstalando productos MSI con WMIC... >> "%LOG_DIR%\wipe_log.txt"
 for /f "skip=1 tokens=2 delims={}" %%I in (
     'wmic product where "Name like '%%Autodesk%%' or Name like '%%AutoCAD%%'" get IdentifyingNumber ^| find "{"'
 ) do (
     set "GUID={%%I}"
-    echo Desinstalando producto MSI: !GUID! >> "%LOG_DIR%\wipe_log.txt"
+    echo Desinstalando MSI: !GUID! >> "%LOG_DIR%\wipe_log.txt"
     msiexec /x "!GUID!" /qn /norestart >> "%LOG_DIR%\wipe_log.txt" 2>&1
     call :CheckError
 )
 
 :: ============ 2. DETENER PROCESOS ============
 echo [2] Matando procesos en memoria... >> "%LOG_DIR%\wipe_log.txt"
-for %%P in (acad.exe AdAppMgrSvc.exe AdskLicensingAgent.exe AutodeskDesktopApp.exe FlexNetLicensingService.exe) do (
+for %%P in (
+    acad.exe 
+    AdAppMgrSvc.exe 
+    AdskLicensingAgent.exe 
+    AutodeskDesktopApp.exe 
+    FlexNetLicensingService.exe
+) do (
     taskkill /f /im %%P >> "%LOG_DIR%\wipe_log.txt" 2>&1
     call :CheckError
 )
@@ -78,6 +101,7 @@ for %%D in (
     "C:\ProgramData\FLEXnet"
 ) do (
     if exist %%~D (
+        echo Eliminando %%~D >> "%LOG_DIR%\wipe_log.txt"
         rmdir /s /q "%%~D" >> "%LOG_DIR%\wipe_log.txt" 2>&1
         call :CheckError
     )
@@ -130,4 +154,5 @@ echo ✅ Proceso completado. Revisa log en %LOG_DIR%\wipe_log.txt
 echo.
 echo Presiona cualquier tecla para salir...
 pause >nul
+endlocal
 exit
