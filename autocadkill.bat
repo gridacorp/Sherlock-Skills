@@ -1,26 +1,20 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: =====================================================
-:: AUTODESK WIPE TOTAL - SIN PAUSAS, SIN ERRORES DETENIENDO
-:: =====================================================
+:: =======================
+:: AUTODESK WIPE - LIMPIEZA TOTAL (Sin wmic)
+:: Ejecutar como Administrador
+:: =======================
 
-:: Crear carpeta de logs
 set "LOG_DIR=%SystemDrive%\Autodesk_Wipe_Logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 echo Iniciado: %DATE% %TIME% > "%LOG_DIR%\wipe_log.txt"
 
-:: [1] Desinstalar productos con WMIC
-echo [1] Desinstalando productos Autodesk... >> "%LOG_DIR%\wipe_log.txt"
-for /f "skip=1 tokens=2 delims={}" %%I in (
-    'wmic product where "Name like '%%Autodesk%%' or Name like '%%AutoCAD%%'" get IdentifyingNumber ^| find "{"'
-) do (
-    set "GUID={%%I}"
-    echo Desinstalando: !GUID! >> "%LOG_DIR%\wipe_log.txt"
-    msiexec /x "!GUID!" /qn /norestart >> "%LOG_DIR%\wipe_log.txt" 2>&1
-)
+:: [1] DESINSTALAR CON PowerShell (sin WMIC)
+echo [1] Desinstalando productos con PowerShell... >> "%LOG_DIR%\wipe_log.txt"
+powershell -Command "Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like '*Autodesk*' -or $_.Name -like '*AutoCAD*' } | ForEach-Object { Write-Output ('Desinstalando: ' + $_.Name); $_.Uninstall() }" >> "%LOG_DIR%\wipe_log.txt" 2>&1
 
-:: [2] Matar procesos relacionados
+:: [2] MATAR PROCESOS
 echo [2] Cerrando procesos... >> "%LOG_DIR%\wipe_log.txt"
 for %%P in (
     acad.exe
@@ -32,7 +26,7 @@ for %%P in (
     taskkill /f /im %%P >> "%LOG_DIR%\wipe_log.txt" 2>&1
 )
 
-:: [3] Eliminar servicios
+:: [3] DETENER Y ELIMINAR SERVICIOS
 echo [3] Eliminando servicios... >> "%LOG_DIR%\wipe_log.txt"
 for %%S in (
     AdAppMgrSvc
@@ -45,7 +39,7 @@ for %%S in (
     sc delete %%~S >> "%LOG_DIR%\wipe_log.txt" 2>&1
 )
 
-:: [4] Borrar tareas programadas
+:: [4] BORRAR TAREAS PROGRAMADAS
 echo [4] Eliminando tareas programadas... >> "%LOG_DIR%\wipe_log.txt"
 schtasks /query /fo LIST | findstr /i "Autodesk" > "%TEMP%\autsched.txt"
 for /f "tokens=2 delims: " %%T in ('findstr /i "TaskName" "%TEMP%\autsched.txt"') do (
@@ -53,7 +47,7 @@ for /f "tokens=2 delims: " %%T in ('findstr /i "TaskName" "%TEMP%\autsched.txt"'
 )
 del "%TEMP%\autsched.txt"
 
-:: [5] Eliminar carpetas
+:: [5] BORRAR CARPETAS
 echo [5] Eliminando carpetas residuales... >> "%LOG_DIR%\wipe_log.txt"
 for %%D in (
     "C:\Program Files\Autodesk"
@@ -72,8 +66,8 @@ for %%D in (
     )
 )
 
-:: [6] Eliminar archivos temporales
-echo [6] Eliminando archivos temporales... >> "%LOG_DIR%\wipe_log.txt"
+:: [6] BORRAR TEMPORALES
+echo [6] Eliminando temporales... >> "%LOG_DIR%\wipe_log.txt"
 del /f /s /q "%TEMP%\*" >> "%LOG_DIR%\wipe_log.txt" 2>&1
 for /d %%T in ("%TEMP%\*") do (
     rd /s /q "%%T" >> "%LOG_DIR%\wipe_log.txt" 2>&1
@@ -83,7 +77,7 @@ for /d %%T in ("%SystemRoot%\Temp\*") do (
     rd /s /q "%%T" >> "%LOG_DIR%\wipe_log.txt" 2>&1
 )
 
-:: [7] Eliminar entradas de registro
+:: [7] BORRAR REGISTRO
 echo [7] Eliminando entradas de registro... >> "%LOG_DIR%\wipe_log.txt"
 for %%R in (
     HKCU\Software\Autodesk
@@ -96,15 +90,15 @@ for %%R in (
     reg delete "%%R" /f >> "%LOG_DIR%\wipe_log.txt" 2>&1
 )
 
-:: [8] Limpiar variables de entorno
-echo [8] Eliminando variables de entorno... >> "%LOG_DIR%\wipe_log.txt"
+:: [8] VARIABLES DE ENTORNO
+echo [8] Limpiando variables de entorno... >> "%LOG_DIR%\wipe_log.txt"
 setx PATH "%PATH:;C:\Program Files\Autodesk;=%" >> "%LOG_DIR%\wipe_log.txt" 2>&1
 reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v AUTODESK_ROOT /f >> "%LOG_DIR%\wipe_log.txt" 2>&1
 
-:: [9] Final
+:: [9] FINAL
 echo. >> "%LOG_DIR%\wipe_log.txt"
 echo ===================================================== >> "%LOG_DIR%\wipe_log.txt"
-echo Proceso finalizado: %DATE% %TIME% >> "%LOG_DIR%\wipe_log.txt"
+echo FINALIZADO: %DATE% %TIME% >> "%LOG_DIR%\wipe_log.txt"
 echo ===================================================== >> "%LOG_DIR%\wipe_log.txt"
 
 endlocal
